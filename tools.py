@@ -377,4 +377,4 @@ def scaffold_game(name):
     with open(dst, "w", encoding="utf-8") as fh:
         fh.write(data)
     return (f"Created {template} in made/ — {GAMES[key]}\n"
-            f"Run it with: run: {os.path.join('made', template)}")
+            f"Play it in a separate terminal window: python {os.path.join('made', template)}")
