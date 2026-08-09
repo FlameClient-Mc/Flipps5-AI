@@ -1,4 +1,4 @@
-"""Train FlameFlipps — LoRA fine-tuning on your own data (CPU-friendly).
+"""Train Flipps V0.1 — LoRA fine-tuning on your own data (CPU-friendly).
 
 Usage:
     python train.py --data data/train.jsonl
@@ -56,18 +56,23 @@ def tokenize(rows, tokenizer):
     for row in rows:
         text = tokenizer.apply_chat_template(to_messages(row), tokenize=False, add_generation_prompt=False)
         enc = tokenizer(text, truncation=True, max_length=1024)
-        result.append({"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"]})
+        # Labels are required explicitly: transformers >= 5 no longer derives them from input_ids.
+        result.append({
+            "input_ids": enc["input_ids"],
+            "attention_mask": enc["attention_mask"],
+            "labels": enc["input_ids"],
+        })
     return result
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Fine-tune FlameFlipps with LoRA on your own data")
+    parser = argparse.ArgumentParser(description="Fine-tune Flipps V0.1 with LoRA on your own data")
     parser.add_argument("--data", default="data/train.jsonl", help="JSONL file of Q&A pairs")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Base model to fine-tune")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--rank", type=int, default=8)
-    parser.add_argument("--output", default="flameflipps-lora", help="Where to save the trained adapter")
+    parser.add_argument("--output", default="flipps-v0.1-lora", help="Where to save the trained adapter")
     parser.add_argument("--merge", action="store_true", help="Also save a merged full model")
     args = parser.parse_args()
 
@@ -76,11 +81,11 @@ def main():
             f"Dataset not found: {args.data} — add your data (see data/train.jsonl for the format)."
         )
 
-    print(f"[FlameFlipps] Loading dataset: {args.data}")
+    print(f"[Flipps V0.1] Loading dataset: {args.data}")
     rows = load_rows(args.data)
-    print(f"[FlameFlipps] {len(rows)} training examples")
+    print(f"[Flipps V0.1] {len(rows)} training examples")
 
-    print(f"[FlameFlipps] Loading base model: {args.model}")
+    print(f"[Flipps V0.1] Loading base model: {args.model}")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -98,7 +103,7 @@ def main():
     model.print_trainable_parameters()
 
     training_args = TrainingArguments(
-        output_dir="flameflipps-checkpoints",
+        output_dir="flipps-v0.1-checkpoints",
         num_train_epochs=args.epochs,
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
@@ -113,17 +118,17 @@ def main():
     trainer = Trainer(model=model, args=training_args, train_dataset=dataset, data_collator=collator)
     trainer.train()
 
-    print(f"[FlameFlipps] Saving adapter to: {args.output}")
+    print(f"[Flipps V0.1] Saving adapter to: {args.output}")
     model.save_pretrained(args.output)
     tokenizer.save_pretrained(args.output)
 
     if args.merge:
-        print("[FlameFlipps] Merging LoRA into the base model...")
+        print("[Flipps V0.1] Merging LoRA into the base model...")
         merged = model.merge_and_unload()
         merged_dir = args.output + "-merged"
         merged.save_pretrained(merged_dir)
         tokenizer.save_pretrained(merged_dir)
-        print(f"[FlameFlipps] Merged model saved to: {merged_dir}")
+        print(f"[Flipps V0.1] Merged model saved to: {merged_dir}")
 
 
 if __name__ == "__main__":

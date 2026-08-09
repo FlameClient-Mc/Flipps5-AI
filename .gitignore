@@ -5,7 +5,7 @@ venv/
 __pycache__/
 *.pyc
 
-# Trained FlameFlipps artifacts (regenerate with train.py)
-flameflipps-lora/
-flameflipps-lora-merged/
-flameflipps-checkpoints/
+# Trained Flipps V0.1 artifacts (regenerate with train.py)
+flipps-v0.1-lora/
+flipps-v0.1-lora-merged/
+flipps-v0.1-checkpoints/
