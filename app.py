@@ -84,6 +84,9 @@ def run_tool(user_input):
         if len(parts) < 2:
             return ("make", "Usage: make: <filename> <content>")
         return ("make", tools.make_file(parts[0], parts[1]))
+    if lower.startswith("game:") or lower.startswith("!game"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("game", tools.scaffold_game(q))
     if lower.startswith("fetch:") or lower.startswith("read:") or lower.startswith("!fetch"):
         q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
         return ("fetch", tools.read_url(q))

@@ -86,6 +86,8 @@ Flipps V0.1 has real tool access — it searches the web, reads pages, and looks
 | `run: <code>` | **execute** Python code (prefix `js ` for JavaScript) — Flipps makes and tests things |
 | `run: made/file.py` | run a file you saved with `make:` |
 | `make: <file> <content>` | save generated code to a file in `made/` |
+| `game: <name>` | make a complete game — `snake`, `pong`, `tetris`, or `voxel` (3D mini-Minecraft) |
+| `game: list` | list all games Flipps can make |
 | `github: <query>` | search GitHub repositories |
 | `repo: <owner/name>` | details on one repo (e.g. `repo: FlameClient-Mc/Flipps5-AI`) |
 | `youtube: <query>` | find YouTube videos |
@@ -115,6 +117,15 @@ Flipps V0.1 isn't just a talker — it can **make and run**:
 So you can ask for a script or a game, have Flipps write it, save it with `make:`,
 and test it with `run:` — all in the same chat. Execution has a 30s timeout and
 obviously destructive commands are blocked.
+
+**Games built in** (`game:` scaffolds a complete playable game into `made/`):
+
+| Game | What it is | Run with |
+|---|---|---|
+| `snake` | classic Snake — arrow keys (tkinter, no installs) | `run: made/snake.py` |
+| `pong` | two-player Pong — W/S vs Up/Down (tkinter) | `run: made/pong.py` |
+| `tetris` | Tetris — rotate & stack (tkinter) | `run: made/tetris.py` |
+| `voxel` / `minecraft` | **3D mini-Minecraft from scratch** — noise terrain, gravity physics, break & place blocks, WASD + mouse look (pyglet) | `run: made/voxel_world.py` |
 
 ## Hardware notes
 

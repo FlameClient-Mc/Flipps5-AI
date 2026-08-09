@@ -262,6 +262,8 @@ TOOL_HELP = """Flipps V0.1 tools — type any of these:
   run: <code>          EXECUTE Python code (prefix 'js ' for JavaScript)
   run: made/app.py     run a file you saved
   make: <file> <text>  save generated code/content to a file in made/
+  game: <name>         make a game — snake, pong, tetris, voxel (mini-Minecraft)
+  game: list           list all games I can make
   telegram: <chat_id> <text>   send a Telegram message (needs bot token)
   twitter: <query> / instagram: <query>   scoped web search
 """
@@ -335,3 +337,44 @@ def make_file(filename, content):
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(content)
     return f"Saved {len(content)} chars to {path} — you can run it with: run: {os.path.join('made', name)}"
+
+
+GAMES = {
+    "snake": "Classic Snake — arrow keys, eat the food, grow (tkinter, no dependencies)",
+    "pong": "Two-player Pong — W/S vs Up/Down arrows (tkinter, no dependencies)",
+    "tetris": "Tetris — rotate and stack falling blocks (tkinter, no dependencies)",
+    "voxel": "Voxel World — a 3D mini-Minecraft from scratch: procedural terrain, "
+             "gravity physics, break and place blocks (pyglet + OpenGL)",
+    "minecraft": "Alias for voxel — a mini-Minecraft from scratch",
+}
+
+
+def scaffold_game(name):
+    """Create a playable game from a built-in template.
+
+    Usage: game: <name>    (snake, pong, tetris, voxel / minecraft)
+           game: list
+    """
+    key = name.strip().lower()
+    if key == "list":
+        return "I can make these games:\n" + "\n".join(
+            f"  {k}: {v}" for k, v in GAMES.items())
+    if key == "minecraft":
+        key = "voxel"
+    if key not in GAMES:
+        return ("I can make these games: " + ", ".join(GAMES)
+                + ". Try: game: snake")
+    template = "voxel_world.py" if key == "voxel" else key + ".py"
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "templates", template)
+    if not os.path.isfile(src):
+        return f"Game template {template} is missing."
+    folder = os.path.join(os.getcwd(), "made")
+    os.makedirs(folder, exist_ok=True)
+    dst = os.path.join(folder, template)
+    with open(src, encoding="utf-8") as fh:
+        data = fh.read()
+    with open(dst, "w", encoding="utf-8") as fh:
+        fh.write(data)
+    return (f"Created {template} in made/ — {GAMES[key]}\n"
+            f"Run it with: run: {os.path.join('made', template)}")
