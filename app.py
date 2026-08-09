@@ -13,7 +13,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from persona import SYSTEM_PROMPT
 
-DEFAULT_MODEL = os.environ.get("FLAMEFLIPPS_MODEL", "Qwen/Qwen2.5-0.5B-Instruct")
+DEFAULT_MODEL = os.environ.get("FLAMEFLIPPS_MODEL", "Qwen/Qwen2.5-Coder-0.5B-Instruct")
 ADAPTER_DIR = "flipps-v0.1-lora"
 MAX_HISTORY_TURNS = 10
 

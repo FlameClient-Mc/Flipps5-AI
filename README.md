@@ -2,7 +2,7 @@
 
 **Flipps V0.1** — a personal AI assistant created by and owned by **FlameFlipps**.
 
-Flipps V0.1 runs **completely on your own machine** (no cloud, no API fees, no data leaves your PC). It's built on a small open-source model (`Qwen2.5-0.5B-Instruct`) and can be **fine-tuned on your own data** with the included training script.
+Flipps V0.1 runs **completely on your own machine** (no cloud, no API fees, no data leaves your PC). It's built on a small coding-specialized open-source model (`Qwen2.5-Coder-0.5B-Instruct`) that knows **all programming languages**, and it can be **fine-tuned on your own data** with the included training script.
 
 ## What's in here
 
@@ -68,7 +68,7 @@ python train.py --merge                 # also save a standalone merged model
 ## Make it yours
 
 - **Personality** — edit `persona.py`. That's the voice Flipps V0.1 uses in chat *and* for training examples without a system message.
-- **Bigger/smarter** — swap the base model: `python app.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0` (better quality, slower on this CPU) or `python train.py --model <model-name>`.
+- **Bigger/smarter** — swap the base model: `python app.py --model Qwen/Qwen2.5-Coder-1.5B-Instruct` (much stronger coding, needs more RAM/CPU — best trained in a Codespace) or `python train.py --model <model-name>`.
 
 ## How it works (the honest version)
 
