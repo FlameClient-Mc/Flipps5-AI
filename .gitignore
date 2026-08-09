@@ -1,1 +1,11 @@
-".freebuff/" 
+.freebuff/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Trained FlameFlipps artifacts (regenerate with train.py)
+flameflipps-lora/
+flameflipps-lora-merged/
+flameflipps-checkpoints/
