@@ -59,7 +59,10 @@ def web_search(query, max_results=5):
 def _google_search(query, key, cx, max_results):
     url = "https://www.googleapis.com/customsearch/v1"
     params = {"key": key, "cx": cx, "q": query, "num": min(max_results, 10)}
-    data = requests.get(url, params=params, timeout=15).json()
+    r = requests.get(url, params=params, timeout=15)
+    data = r.json()
+    if "error" in data:
+        raise RuntimeError(data["error"].get("message", "Google CSE error"))
     return [
         {"title": item.get("title", ""), "url": item.get("link", ""),
          "snippet": item.get("snippet", "")}
