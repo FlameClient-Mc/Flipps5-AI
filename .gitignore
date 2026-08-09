@@ -12,3 +12,6 @@ __pycache__/
 flipps-v0.1-lora/
 flipps-v0.1-lora-merged/
 flipps-v0.1-checkpoints/
+
+# Files Flipps creates with make:
+made/

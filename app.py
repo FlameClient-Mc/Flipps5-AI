@@ -75,6 +75,15 @@ def run_tool(user_input):
     if lower.startswith("repo:") or lower.startswith("!repo"):
         q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
         return ("repo", tools.github_repo(q))
+    if lower.startswith("run:") or lower.startswith("!run"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("run", tools.run_code(q))
+    if lower.startswith("make:") or lower.startswith("!make"):
+        rest = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        parts = rest.split(None, 1)
+        if len(parts) < 2:
+            return ("make", "Usage: make: <filename> <content>")
+        return ("make", tools.make_file(parts[0], parts[1]))
     if lower.startswith("fetch:") or lower.startswith("read:") or lower.startswith("!fetch"):
         q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
         return ("fetch", tools.read_url(q))

@@ -83,6 +83,9 @@ Flipps V0.1 has real tool access — it searches the web, reads pages, and looks
 | `search: <query>` | web search (DuckDuckGo key-less, or Google if keys are set) |
 | `research: <query>` | search + read the top pages and synthesize an answer |
 | `fetch: <url>` | read the text of a web page |
+| `run: <code>` | **execute** Python code (prefix `js ` for JavaScript) — Flipps makes and tests things |
+| `run: made/file.py` | run a file you saved with `make:` |
+| `make: <file> <content>` | save generated code to a file in `made/` |
 | `github: <query>` | search GitHub repositories |
 | `repo: <owner/name>` | details on one repo (e.g. `repo: FlameClient-Mc/Flipps5-AI`) |
 | `youtube: <query>` | find YouTube videos |
@@ -100,6 +103,18 @@ Flipps V0.1 has real tool access — it searches the web, reads pages, and looks
 - `INSTAGRAM_TOKEN` — Instagram business API
 
 Without keys, everything except X/Instagram works through free public endpoints.
+
+## Make & run real things
+
+Flipps V0.1 isn't just a talker — it can **make and run**:
+
+- `make: <filename> <content>` saves generated code to the `made/` folder
+- `run: <code>` executes Python (or JavaScript with a `js ` prefix) and reports the output
+- `run: made/yourfile.py` runs a saved file
+
+So you can ask for a script or a game, have Flipps write it, save it with `make:`,
+and test it with `run:` — all in the same chat. Execution has a 30s timeout and
+obviously destructive commands are blocked.
 
 ## Hardware notes
 

@@ -14,6 +14,8 @@ import html
 import html.parser
 import os
 import re
+import subprocess
+import sys
 import urllib.parse
 
 import requests
@@ -257,6 +259,79 @@ TOOL_HELP = """Flipps V0.1 tools — type any of these:
   github: <query>      search GitHub repos
   repo: <owner/name>   details on one GitHub repo
   fetch: <url>         read the text of a web page
+  run: <code>          EXECUTE Python code (prefix 'js ' for JavaScript)
+  run: made/app.py     run a file you saved
+  make: <file> <text>  save generated code/content to a file in made/
   telegram: <chat_id> <text>   send a Telegram message (needs bot token)
   twitter: <query> / instagram: <query>   scoped web search
 """
+
+
+# --------------------------------------------------------------------------- #
+# Run / Make — execute code and save files
+# --------------------------------------------------------------------------- #
+_DANGEROUS = re.compile(
+    r"\b(rm\s+-rf\s+/|format\s+[a-z]:|del\s+/[a-z]/|shutdown\s+-s|remove\s+-recurse\s+[a-z]:|mkfs)",
+    re.I,
+)
+
+
+def _run_file(path, timeout=30):
+    if path.endswith(".js"):
+        cmd, label = ["node", os.path.abspath(path)], "JavaScript"
+    else:
+        cmd, label = [sys.executable, os.path.abspath(path)], "Python"
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                           cwd=os.path.dirname(os.path.abspath(path)) or None)
+    except subprocess.TimeoutExpired:
+        return f"Timed out after {timeout}s."
+    out = "\n".join(x for x in (r.stdout, r.stderr) if x).strip()
+    return f"[ran {label} file {path}]\n" + (out[:4000] or "(no output)")
+
+
+def run_code(text, timeout=30):
+    """Execute Python or JavaScript code (or an existing file) and return output.
+
+    Usage: run: <code>           Python by default; prefix 'js ' for JavaScript
+           run: made/foo.py      run a saved file
+    """
+    code = text.strip()
+    lang = "py"
+    if code.lower().startswith(("js ", "javascript ")):
+        lang, code = "js", code.split(None, 1)[1].strip()
+    elif code.lower().startswith(("py ", "python ")):
+        code = code.split(None, 1)[1].strip()
+    elif os.path.isfile(code):
+        return _run_file(code, timeout)
+    if not code:
+        return "Nothing to run."
+    if _DANGEROUS.search(code):
+        return "Blocked: that looks destructive, I won't run it."
+    try:
+        if lang == "js":
+            r = subprocess.run(["node", "-e", code], capture_output=True, text=True,
+                               timeout=timeout)
+        else:
+            r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                               timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return f"Timed out after {timeout}s."
+    out = "\n".join(x for x in (r.stdout, r.stderr) if x).strip()
+    return out[:4000] or "(no output)"
+
+
+def make_file(filename, content):
+    """Save generated content to a file inside the made/ folder.
+
+    Usage: make: <filename> <content>
+    """
+    name = filename.replace("\\", "/").split("/")[-1].strip()
+    if not name or name in {".", ".."}:
+        return "Invalid filename."
+    folder = os.path.join(os.getcwd(), "made")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    return f"Saved {len(content)} chars to {path} — you can run it with: run: {os.path.join('made', name)}"
