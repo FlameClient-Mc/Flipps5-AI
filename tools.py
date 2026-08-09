@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 
 import requests
@@ -47,15 +48,30 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FlippsV0.1/0.1"}
 # --------------------------------------------------------------------------- #
 def web_search(query, max_results=5):
     """Search the web. Uses Google Custom Search if keys are configured,
-    otherwise a key-less DuckDuckGo search. Returns a list of result dicts."""
+    otherwise a key-less DuckDuckGo search. Returns a list of result dicts.
+    Retries with a short backoff so flaky connections / rate limits don't
+    produce empty results."""
     cse_key = os.environ.get("GOOGLE_CSE_KEY")
     cse_cx = os.environ.get("GOOGLE_CSE_CX")
-    if cse_key and cse_cx:
+    for attempt in range(1, 4):
+        if cse_key and cse_cx:
+            try:
+                res = _google_search(query, cse_key, cse_cx, max_results)
+                if res:
+                    return res
+            except Exception:
+                pass  # fall through to DuckDuckGo
         try:
-            return _google_search(query, cse_key, cse_cx, max_results)
+            res = _duckduckgo_search(query, max_results)
+            if res:
+                return res
+            res = _duckduckgo_lite(query, max_results)
+            if res:
+                return res
         except Exception:
-            pass  # fall through to DuckDuckGo
-    return _duckduckgo_search(query, max_results)
+            pass
+        time.sleep(2 * attempt)
+    return []
 
 
 def _google_search(query, key, cx, max_results):
@@ -70,6 +86,27 @@ def _google_search(query, key, cx, max_results):
          "snippet": item.get("snippet", "")}
         for item in data.get("items", [])
     ]
+
+
+def _duckduckgo_lite(query, max_results):
+    """Fallback key-less search via DuckDuckGo's lite endpoint."""
+    url = "https://lite.duckduckgo.com/lite/"
+    r = requests.post(url, data={"q": query}, headers=UA, timeout=15)
+    r.raise_for_status()
+    results = []
+    for m in re.finditer(
+        r'<a[^>]+rel="nofollow"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', r.text
+    ):
+        href = html.unescape(m.group(1))
+        if not href.startswith("http"):
+            continue
+        title = re.sub(r"<[^>]+>", "", html.unescape(m.group(2))).strip()
+        if not title:
+            continue
+        results.append({"title": title, "url": href, "snippet": ""})
+        if len(results) >= max_results:
+            break
+    return results
 
 
 def _duckduckgo_search(query, max_results):
@@ -125,15 +162,92 @@ class _TextExtractor(html.parser.HTMLParser):
             self.parts.append(data)
 
 
+_JUNK_LINE_RE = re.compile(
+    r"(paid program|subscribe|sign ?in|log ?in|cookie|privacy policy|terms of|"
+    r"all rights reserved|newsletter|follow us|advertis|\u00a9|skip to content)",
+    re.I,
+)
+
+
+def extract_prose(text, min_line=60, max_chars=900):
+    """Keep only prose-length lines (real sentences), dropping table rows,
+    nav fragments, and citation markers. Returns up to max_chars."""
+    out = []
+    for ln in text.split("\n"):
+        s = ln.strip()
+        if len(s) < min_line or re.match(r"^[\d.\s]+$", s):
+            continue
+        out.append(re.sub(r"\[\d+\]", "", s))
+    return "\n".join(out)[:max_chars]
+
+
+_STOPWORDS = {
+    "how", "what", "when", "where", "which", "who", "why", "the", "a", "an",
+    "and", "or", "but", "of", "to", "for", "with", "on", "in", "at", "by",
+    "from", "is", "are", "was", "were", "be", "been", "do", "does", "did",
+    "have", "has", "had", "can", "could", "will", "would", "should", "may",
+    "might", "i", "you", "he", "she", "it", "we", "they", "me", "him", "her",
+    "us", "them", "my", "your", "our", "their", "its", "this", "that", "these",
+    "those", "there", "here", "so", "as", "up", "down", "out", "off", "about",
+    "than", "then", "also", "very", "just", "not", "no", "yes", "much", "many",
+    "more", "most", "tell", "me", "please", "like", "want", "need",
+}
+
+
+def extract_answer_sentences(text, query, max_sentences=3):
+    """Pick the 1-3 most answer-like sentences from a page for the given query.
+    Prefers sentences with query keywords, money/numbers, proper names, and
+    recent dates; skips old years, nav fragments, and duplicate sentences."""
+    text = re.sub(r"\[\w+\]", "", text)  # strip [edit], [1] markers
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text)]
+    keywords = [
+        w for w in re.findall(r"[a-z]{4,}", query.lower())
+        if w not in _STOPWORDS
+    ]
+    seen = set()
+    scored = []
+    for s in sentences:
+        if len(s) < 60 or len(s) > 350:
+            continue
+        low = s.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+        score = 0
+        for w in keywords:
+            if w in low:
+                score += 2
+        if re.search(r"\$\s?\d|\d[\d,.]*\s*(billion|million|trillion)", low):
+            score += 3
+        if re.search(r"\b[A-Z][a-z]+ [A-Z][a-z]+", s):  # full proper name
+            score += 2
+        if re.search(r"\b(is|are|was|were)\b", low):
+            score += 1
+        if re.search(r"\b(19\d\d|200\d|201\d)\b", low):  # stale old year
+            score -= 3
+        if re.search(r"\b(20[2-9]\d)\b", low) or "as of" in low:  # recent
+            score += 2
+        if score >= 4:
+            scored.append((score, s))
+    scored.sort(key=lambda t: -t[0])
+    return "\n".join(s for _, s in scored[:max_sentences])[:1200]
+
+
 def read_url(url, max_chars=6000):
-    """Fetch a URL and return its readable text (HTML stripped)."""
+    """Fetch a URL and return its readable text (HTML stripped, nav junk filtered)."""
     r = requests.get(url, headers=UA, timeout=20)
     r.raise_for_status()
     parser = _TextExtractor()
     parser.feed(r.text)
     text = re.sub(r"\n{3,}", "\n\n", "".join(parser.parts))
     text = re.sub(r"[ \t]{2,}", " ", text).strip()
-    return text[:max_chars]
+    lines = []
+    for ln in text.split("\n"):
+        s = ln.strip()
+        if len(s) < 3 or _JUNK_LINE_RE.search(s):
+            continue
+        lines.append(s)
+    return "\n".join(lines)[:max_chars]
 
 
 # --------------------------------------------------------------------------- #

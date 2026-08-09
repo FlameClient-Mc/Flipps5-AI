@@ -42,14 +42,17 @@ _CODE_HINT_RE = re.compile(
 )
 _IDENTITY_RE = re.compile(
     r"\b(who|what|how) (are|is|am|can|do|did) (you|i)\b|"
-    r"\bwho (made|created|built|developed|owns|programmed|designed) (you|me)\b|"
-    r"\bwho (is|was) your (creator|owner|developer|maker|builder)\b|"
+    r"\bwho (made|created|built|developed|owns|programmed|designed) "
+    r"(you|me|the ai|the model|this ai|this model|this bot|this assistant)\b|"
+    r"\bwho (is|was) your (creator|owner|developer|maker|builder|programmer)\b|"
     r"\bwhat version are you\b",
     re.I,
 )
 CREDIT_RE = re.compile(
-    r"\bwho (made|created|built|developed|owns|programmed|designed) (you|me)\b|"
-    r"\bwho (is|was) your (creator|owner|developer|maker|builder)\b|"
+    r"\bwho (made|created|built|developed|owns|programmed|designed|coded) "
+    r"(you|me|the ai|the model|the bot|this ai|this model|this bot|this assistant)\b|"
+    r"\bwho (is|was) your (creator|owner|developer|maker|builder|programmer)\b|"
+    r"\bwho (is|was) the (creator|owner|developer|maker|builder) of (you|this ai|this model|this bot)\b|"
     r"\bwhat version (are you|is this)\b",
     re.I,
 )
@@ -152,34 +155,58 @@ def chat_loop(tokenizer, model, max_tokens, temperature, auto_search=True):
             history.append({"role": "system", "content":
                 f"Tool results from '{label}':\n{result}\n\nUse these results to answer the user's request concisely."})
             greedy = True
+        elif _IDENTITY_RE.search(user_input):
+            # Greeting or "what are you" — answer naturally, no creator credit.
+            history.append({"role": "user", "content": user_input})
+            history.append({"role": "system", "content":
+                "The user is greeting you or asking about you, but did NOT ask "
+                "who made you. Answer naturally and briefly. Do NOT mention "
+                "FlameFlipps, your creator, or who made you."})
         elif auto_search and looks_factual(user_input):
             try:
-                results = tools.web_search(user_input, 4)
+                results = tools.web_search(user_input, 6)
             except Exception:
                 results = []
             if results:
-                facts = "\n".join(
+                snippets = "\n".join(
                     f"{i}. {r['title']}: {r.get('snippet', '') or '(no summary)'}"
                     for i, r in enumerate(results, 1)
                 )
-                # Read the top source so the model has real sentences, not just titles.
-                try:
-                    page = tools.read_url(results[0]["url"], max_chars=1500)
-                    if page:
-                        facts += (f"\n\nExcerpt from the top source "
-                                  f"({results[0]['title']}):\n{page}")
-                except Exception:
-                    pass
+                # Read ONE page and pull out the 1-3 sentences that actually
+                # answer the question. Short, clean facts stop the small model
+                # from refusing or hallucinating on long messy excerpts.
+                skip_tracker = re.compile(r"(tracker|real-?time|live counter)", re.I)
+                facts = ""
+                for r0 in results[:4]:
+                    if skip_tracker.search(r0["url"]) or \
+                            skip_tracker.search(r0.get("title", "")):
+                        continue
+                    try:
+                        text = tools.read_url(r0["url"], max_chars=12000)
+                        sentences = tools.extract_answer_sentences(text, user_input)
+                    except Exception:
+                        continue
+                    if sentences:
+                        facts = sentences
+                        break
+                if not facts:
+                    facts = snippets
                 today = datetime.date.today().strftime("%B %d, %Y")
                 history.append({"role": "user", "content":
                     f"{user_input}\n\n"
                     f"[Facts from a live web search — today is {today}. Answer the "
-                    f"question using ONLY these facts: use the exact names, amounts "
-                    f"and dates shown. Never invent information. Keep it to 2-3 short "
-                    f"sentences.]\n{facts}"})
+                    f"question using ONLY these facts. Quote the exact names, amounts, "
+                    f"and dates shown in the facts. Never invent information. If the "
+                    f"facts do not contain the answer, say you couldn't find a clear "
+                    f"answer. Keep it to 2-3 short sentences.]\n{facts}"})
                 greedy = True
             else:
                 history.append({"role": "user", "content": user_input})
+                history.append({"role": "system", "content":
+                    "A live web search was attempted but returned no results. "
+                    "Answer briefly and honestly that you couldn't find current "
+                    "information on this, and suggest trying again or asking a "
+                    "more specific question."})
         else:
             history.append({"role": "user", "content": user_input})
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history[-MAX_HISTORY_TURNS:]
