@@ -18,6 +18,25 @@ import urllib.parse
 
 import requests
 
+
+def _load_env(path=".env"):
+    """Load KEY=VALUE pairs from a local .env file (real env vars win)."""
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            value = value.strip().strip('\"')
+            if not value:
+                continue  # leave empty keys unset
+            os.environ.setdefault(key.strip(), value)
+
+
+_load_env()
+
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FlippsV0.1/0.1"}
 
 

@@ -90,7 +90,7 @@ Flipps V0.1 has real tool access — it searches the web, reads pages, and looks
 | `twitter: <query>` / `instagram: <query>` | scoped web search |
 | `help` | list all tools in chat |
 
-**Optional API keys** (set as environment variables to unlock the full integrations):
+**Optional API keys** — put them in a `.env` file next to the app (copy `.env.example`, fill it in; `.env` is gitignored so keys never reach the repo). Real environment variables also work. Keys:
 
 - `GOOGLE_CSE_KEY` + `GOOGLE_CSE_CX` — real Google Search results (Google Custom Search JSON API)
 - `YOUTUBE_API_KEY` — proper YouTube Data API search
