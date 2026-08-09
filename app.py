@@ -5,6 +5,7 @@ Usage:
     python app.py --adapter flameflipps-lora   # chat with your fine-tuned model
 """
 import argparse
+import datetime
 import os
 import re
 import sys
@@ -107,45 +108,67 @@ def chat_loop(tokenizer, model, max_tokens, temperature, auto_search=True):
             continue
         if user_input.lower() in {"exit", "quit"}:
             break
+        greedy = False
         tool = run_tool(user_input)
         if tool:
             label, result = tool
-            print(f"[tool] {label}: done")
             history.append({"role": "user", "content": user_input})
             history.append({"role": "system", "content":
                 f"Tool results from '{label}':\n{result}\n\nUse these results to answer the user's request concisely."})
+            greedy = True
         elif auto_search and looks_factual(user_input):
-            print(f"[tool] auto-search (Google): {user_input}")
-            history.append({"role": "user", "content": user_input})
             try:
                 results = tools.web_search(user_input, 4)
-            except Exception as e:
-                print(f"[tool] auto-search failed: {e}")
+            except Exception:
                 results = []
             if results:
-                text = "\n".join(
-                    f"- {r['title']} ({r['url']}): {r.get('snippet', '')}" for r in results
+                facts = "\n".join(
+                    f"{i}. {r['title']}: {r.get('snippet', '') or '(no summary)'}"
+                    for i, r in enumerate(results, 1)
                 )
-                history.append({"role": "system", "content":
-                    f"Google search results for the user's question:\n{text}\n\n"
-                    "Answer using these results — give the current, factual answer "
-                    "(names, amounts, dates), then a short interesting detail about the topic."})
+                # Read the top source so the model has real sentences, not just titles.
+                try:
+                    page = tools.read_url(results[0]["url"], max_chars=1500)
+                    if page:
+                        facts += (f"\n\nExcerpt from the top source "
+                                  f"({results[0]['title']}):\n{page}")
+                except Exception:
+                    pass
+                today = datetime.date.today().strftime("%B %d, %Y")
+                history.append({"role": "user", "content":
+                    f"{user_input}\n\n"
+                    f"[Facts from a live web search — today is {today}. Answer the "
+                    f"question using ONLY these facts: use the exact names, amounts "
+                    f"and dates shown. Never invent information. Keep it to 2-3 short "
+                    f"sentences.]\n{facts}"})
+                greedy = True
             else:
-                print("[tool] auto-search: no results (answering from knowledge)")
+                history.append({"role": "user", "content": user_input})
         else:
             history.append({"role": "user", "content": user_input})
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history[-MAX_HISTORY_TURNS:]
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(prompt, return_tensors="pt")
         with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                do_sample=True,
-                temperature=temperature,
-                top_p=0.9,
-                pad_token_id=tokenizer.eos_token_id,
-            )
+            if greedy:
+                # Facts are in context — greedy decoding keeps the answer on-facts
+                # instead of letting a small model wander into hallucination.
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=min(max_tokens, 240),
+                    do_sample=False,
+                    repetition_penalty=1.15,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
+            else:
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    do_sample=True,
+                    temperature=temperature,
+                    top_p=0.9,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
         reply = tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
         history.append({"role": "assistant", "content": reply})
         print(f"Flipps V0.1> {reply}")

@@ -85,7 +85,15 @@ def _duckduckgo_search(query, max_results):
         title = re.sub(r"<[^>]+>", "", html.unescape(m.group(2))).strip()
         if not title:
             continue
-        results.append({"title": title, "url": href, "snippet": ""})
+        # Each result block also carries a summary in <a class="result__snippet">
+        snippet = ""
+        sm = re.search(
+            r'<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>',
+            r.text[m.end():],
+        )
+        if sm:
+            snippet = re.sub(r"<[^>]+>", "", html.unescape(sm.group(1))).strip()
+        results.append({"title": title, "url": href, "snippet": snippet})
         if len(results) >= max_results:
             break
     return results
