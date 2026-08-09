@@ -6,6 +6,7 @@ Usage:
 """
 import argparse
 import os
+import re
 import sys
 
 import torch
@@ -30,6 +31,26 @@ def load_model(model_name, adapter_dir):
         model = PeftModel.from_pretrained(model, adapter_dir)
     model.eval()
     return tokenizer, model
+
+
+_FACTUAL_RE = re.compile(
+    r"\b(who|what|where|when|which|why|how many|how much|how old|is there|are there)\b", re.I
+)
+_CODE_HINT_RE = re.compile(
+    r"\b(write|code|how do i|how can i|make|create|fix|debug|implement|function|script|build)\b", re.I
+)
+_IDENTITY_RE = re.compile(r"\b(who|what) (are|is|am|can|do|did) (you|i)\b", re.I)
+
+
+def looks_factual(text):
+    """Heuristic: is this a question about facts/current events (not a code request)?"""
+    if not _FACTUAL_RE.search(text):
+        return False
+    if _IDENTITY_RE.search(text):
+        return False
+    if _CODE_HINT_RE.search(text):
+        return False
+    return True
 
 
 def run_tool(user_input):
@@ -71,7 +92,7 @@ def run_tool(user_input):
     return None
 
 
-def chat_loop(tokenizer, model, max_tokens, temperature):
+def chat_loop(tokenizer, model, max_tokens, temperature, auto_search=True):
     print()
     print("  Flipps V0.1 is ready. Type 'exit' or 'quit' to leave.")
     print("  " + "-" * 60)
@@ -93,6 +114,24 @@ def chat_loop(tokenizer, model, max_tokens, temperature):
             history.append({"role": "user", "content": user_input})
             history.append({"role": "system", "content":
                 f"Tool results from '{label}':\n{result}\n\nUse these results to answer the user's request concisely."})
+        elif auto_search and looks_factual(user_input):
+            print(f"[tool] auto-search (Google): {user_input}")
+            history.append({"role": "user", "content": user_input})
+            try:
+                results = tools.web_search(user_input, 4)
+            except Exception as e:
+                print(f"[tool] auto-search failed: {e}")
+                results = []
+            if results:
+                text = "\n".join(
+                    f"- {r['title']} ({r['url']}): {r.get('snippet', '')}" for r in results
+                )
+                history.append({"role": "system", "content":
+                    f"Google search results for the user's question:\n{text}\n\n"
+                    "Answer using these results — give the current, factual answer "
+                    "(names, amounts, dates), then a short interesting detail about the topic."})
+            else:
+                print("[tool] auto-search: no results (answering from knowledge)")
         else:
             history.append({"role": "user", "content": user_input})
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history[-MAX_HISTORY_TURNS:]
@@ -120,11 +159,14 @@ def main():
     parser.add_argument("--no-adapter", action="store_true", help="Ignore any fine-tuned adapter")
     parser.add_argument("--max-tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument("--no-auto-search", action="store_true",
+                        help="Disable automatic Google search for factual questions")
     args = parser.parse_args()
 
     adapter = None if args.no_adapter else args.adapter
     tokenizer, model = load_model(args.model, adapter)
-    chat_loop(tokenizer, model, args.max_tokens, args.temperature)
+    chat_loop(tokenizer, model, args.max_tokens, args.temperature,
+              auto_search=not args.no_auto_search)
     return 0
 
 
