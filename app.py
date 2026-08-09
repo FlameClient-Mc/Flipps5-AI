@@ -40,7 +40,25 @@ _FACTUAL_RE = re.compile(
 _CODE_HINT_RE = re.compile(
     r"\b(write|code|how do i|how can i|make|create|fix|debug|implement|function|script|build)\b", re.I
 )
-_IDENTITY_RE = re.compile(r"\b(who|what|how) (are|is|am|can|do|did) (you|i)\b", re.I)
+_IDENTITY_RE = re.compile(
+    r"\b(who|what|how) (are|is|am|can|do|did) (you|i)\b|"
+    r"\bwho (made|created|built|developed|owns|programmed|designed) (you|me)\b|"
+    r"\bwho (is|was) your (creator|owner|developer|maker|builder)\b|"
+    r"\bwhat version are you\b",
+    re.I,
+)
+CREDIT_RE = re.compile(
+    r"\bwho (made|created|built|developed|owns|programmed|designed) (you|me)\b|"
+    r"\bwho (is|was) your (creator|owner|developer|maker|builder)\b|"
+    r"\bwhat version (are you|is this)\b",
+    re.I,
+)
+CREDIT = (
+    "I'm made by a Developer named FlameFlipps. "
+    "Flipps AI Discord: https://discord.gg/GYgVuHTCZT. "
+    "FlameFlipps YouTube: https://www.youtube.com/@FlameFlipps. "
+    "He created Model Version 0.1v."
+)
 
 
 def looks_factual(text):
@@ -121,6 +139,12 @@ def chat_loop(tokenizer, model, max_tokens, temperature, auto_search=True):
         if user_input.lower() in {"exit", "quit"}:
             break
         greedy = False
+        if CREDIT_RE.search(user_input):
+            history.append({"role": "user", "content": user_input})
+            history.append({"role": "assistant", "content": CREDIT})
+            print(f"Flipps V0.1> {CREDIT}")
+            print()
+            continue
         tool = run_tool(user_input)
         if tool:
             label, result = tool
