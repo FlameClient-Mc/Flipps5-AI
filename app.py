@@ -35,12 +35,12 @@ def load_model(model_name, adapter_dir):
 
 
 _FACTUAL_RE = re.compile(
-    r"\b(who|what|where|when|which|why|how many|how much|how old|is there|are there)\b", re.I
+    r"\b(who|what|whats|what's|where|when|which|why|how is|how are|how does|how do|how can|how to|how much|how many|how old|how tall|how big|how far|how long|is there|are there|tell me about)\b", re.I
 )
 _CODE_HINT_RE = re.compile(
     r"\b(write|code|how do i|how can i|make|create|fix|debug|implement|function|script|build)\b", re.I
 )
-_IDENTITY_RE = re.compile(r"\b(who|what) (are|is|am|can|do|did) (you|i)\b", re.I)
+_IDENTITY_RE = re.compile(r"\b(who|what|how) (are|is|am|can|do|did) (you|i)\b", re.I)
 
 
 def looks_factual(text):
