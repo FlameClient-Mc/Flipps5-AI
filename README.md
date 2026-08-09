@@ -74,6 +74,33 @@ python train.py --merge                 # also save a standalone merged model
 
 This is a **fine-tuned open-source model**, which is how individuals realistically build "their own AI" — training a model from scratch needs data-center GPUs. What's *yours*: the fine-tune (your data, your knowledge baked in), the Flipps V0.1 persona, the app, and the repo. The model weights themselves remain under their original open license.
 
+## Tools & live access
+
+Flipps V0.1 has real tool access — it searches the web, reads pages, and looks up GitHub/YouTube, then answers using what it found. In chat, use these commands:
+
+| Command | What it does |
+|---|---|
+| `search: <query>` | web search (DuckDuckGo key-less, or Google if keys are set) |
+| `research: <query>` | search + read the top pages and synthesize an answer |
+| `fetch: <url>` | read the text of a web page |
+| `github: <query>` | search GitHub repositories |
+| `repo: <owner/name>` | details on one repo (e.g. `repo: FlameClient-Mc/Flipps5-AI`) |
+| `youtube: <query>` | find YouTube videos |
+| `telegram: <chat_id> <text>` | send a Telegram message |
+| `twitter: <query>` / `instagram: <query>` | scoped web search |
+| `help` | list all tools in chat |
+
+**Optional API keys** (set as environment variables to unlock the full integrations):
+
+- `GOOGLE_CSE_KEY` + `GOOGLE_CSE_CX` — real Google Search results (Google Custom Search JSON API)
+- `YOUTUBE_API_KEY` — proper YouTube Data API search
+- `GITHUB_TOKEN` — higher GitHub rate limits (works without one, 60 req/hr)
+- `TELEGRAM_BOT_TOKEN` — send Telegram messages (get a free token from @BotFather)
+- `X_API_BEARER` — real X/Twitter search (paid API)
+- `INSTAGRAM_TOKEN` — Instagram business API
+
+Without keys, everything except X/Instagram works through free public endpoints.
+
 ## Hardware notes
 
 Runs on this machine: 4-core CPU, 16 GB RAM, no GPU. Generation speed is ~5–20 tokens/second — slower than ChatGPT but fully private and free. Fine-tuning is slow on CPU (a few hours for a small dataset) — for faster training, run `train.py` in a GitHub Codespace instead.

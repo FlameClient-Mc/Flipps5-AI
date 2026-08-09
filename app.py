@@ -11,6 +11,7 @@ import sys
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import tools
 from persona import SYSTEM_PROMPT
 
 DEFAULT_MODEL = os.environ.get("FLAMEFLIPPS_MODEL", "Qwen/Qwen2.5-Coder-0.5B-Instruct")
@@ -31,6 +32,45 @@ def load_model(model_name, adapter_dir):
     return tokenizer, model
 
 
+def run_tool(user_input):
+    """Dispatch tool commands. Returns (label, result_text) or None for normal chat."""
+    s = user_input.strip()
+    lower = s.lower()
+    if lower.startswith("!help") or lower.startswith("help:") or s == "help":
+        return ("help", tools.TOOL_HELP)
+    if lower.startswith("search:") or lower.startswith("search ") or lower.startswith("!search"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("search", str(tools.web_search(q)))
+    if lower.startswith("research:") or lower.startswith("!research"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("research", tools.research(q))
+    if lower.startswith("youtube:") or lower.startswith("!youtube"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("youtube", str(tools.youtube_search(q)))
+    if lower.startswith("github:") or lower.startswith("!github"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("github", str(tools.github_search(q)))
+    if lower.startswith("repo:") or lower.startswith("!repo"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("repo", tools.github_repo(q))
+    if lower.startswith("fetch:") or lower.startswith("read:") or lower.startswith("!fetch"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("fetch", tools.read_url(q))
+    if lower.startswith("telegram:") or lower.startswith("!telegram"):
+        rest = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        parts = rest.split(None, 1)
+        if len(parts) < 2:
+            return ("telegram", "Usage: telegram: <chat_id> <message>")
+        return ("telegram", tools.telegram_send(parts[0], parts[1]))
+    if lower.startswith("twitter:") or lower.startswith("!twitter"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("twitter", str(tools.social_search("twitter", q)))
+    if lower.startswith("instagram:") or lower.startswith("!instagram"):
+        q = s.split(":", 1)[1].strip() if ":" in s else s.split(None, 1)[1].strip()
+        return ("instagram", str(tools.social_search("instagram", q)))
+    return None
+
+
 def chat_loop(tokenizer, model, max_tokens, temperature):
     print()
     print("  Flipps V0.1 is ready. Type 'exit' or 'quit' to leave.")
@@ -46,7 +86,15 @@ def chat_loop(tokenizer, model, max_tokens, temperature):
             continue
         if user_input.lower() in {"exit", "quit"}:
             break
-        history.append({"role": "user", "content": user_input})
+        tool = run_tool(user_input)
+        if tool:
+            label, result = tool
+            print(f"[tool] {label}: done")
+            history.append({"role": "user", "content": user_input})
+            history.append({"role": "system", "content":
+                f"Tool results from '{label}':\n{result}\n\nUse these results to answer the user's request concisely."})
+        else:
+            history.append({"role": "user", "content": user_input})
         messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history[-MAX_HISTORY_TURNS:]
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(prompt, return_tensors="pt")

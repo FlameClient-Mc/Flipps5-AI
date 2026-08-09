@@ -1,0 +1,232 @@
+"""Flipps V0.1 — tool access: web search, page reading, GitHub, YouTube, Telegram.
+
+Tools work key-less where possible (DuckDuckGo search, GitHub public API,
+direct page fetching). Optional API keys are read from environment variables
+and light up the full integrations:
+
+    GOOGLE_CSE_KEY / GOOGLE_CSE_CX   - real Google Search (Custom Search JSON API)
+    YOUTUBE_API_KEY                  - YouTube Data API search
+    GITHUB_TOKEN                     - higher GitHub API rate limits
+    TELEGRAM_BOT_TOKEN               - send Telegram messages
+"""
+
+import html
+import html.parser
+import os
+import re
+import urllib.parse
+
+import requests
+
+UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FlippsV0.1/0.1"}
+
+
+# --------------------------------------------------------------------------- #
+# Web search
+# --------------------------------------------------------------------------- #
+def web_search(query, max_results=5):
+    """Search the web. Uses Google Custom Search if keys are configured,
+    otherwise a key-less DuckDuckGo search. Returns a list of result dicts."""
+    cse_key = os.environ.get("GOOGLE_CSE_KEY")
+    cse_cx = os.environ.get("GOOGLE_CSE_CX")
+    if cse_key and cse_cx:
+        try:
+            return _google_search(query, cse_key, cse_cx, max_results)
+        except Exception:
+            pass  # fall through to DuckDuckGo
+    return _duckduckgo_search(query, max_results)
+
+
+def _google_search(query, key, cx, max_results):
+    url = "https://www.googleapis.com/customsearch/v1"
+    params = {"key": key, "cx": cx, "q": query, "num": min(max_results, 10)}
+    data = requests.get(url, params=params, timeout=15).json()
+    return [
+        {"title": item.get("title", ""), "url": item.get("link", ""),
+         "snippet": item.get("snippet", "")}
+        for item in data.get("items", [])
+    ]
+
+
+def _duckduckgo_search(query, max_results):
+    url = "https://html.duckduckgo.com/html/"
+    params = {"q": query}
+    r = requests.post(url, data=params, headers=UA, timeout=15)
+    r.raise_for_status()
+    results = []
+    for m in re.finditer(
+        r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', r.text
+    ):
+        href = html.unescape(m.group(1))
+        if href.startswith("https://duckduckgo.com/y.js"):  # sponsored/ad links
+            continue
+        title = re.sub(r"<[^>]+>", "", html.unescape(m.group(2))).strip()
+        if not title:
+            continue
+        results.append({"title": title, "url": href, "snippet": ""})
+        if len(results) >= max_results:
+            break
+    return results
+
+
+# --------------------------------------------------------------------------- #
+# Read a page / URL
+# --------------------------------------------------------------------------- #
+class _TextExtractor(html.parser.HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.parts = []
+        self.skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "noscript", "svg"):
+            self.skip += 1
+        if tag in ("p", "br", "div", "li", "h1", "h2", "h3", "pre", "tr"):
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript", "svg") and self.skip:
+            self.skip -= 1
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.parts.append(data)
+
+
+def read_url(url, max_chars=6000):
+    """Fetch a URL and return its readable text (HTML stripped)."""
+    r = requests.get(url, headers=UA, timeout=20)
+    r.raise_for_status()
+    parser = _TextExtractor()
+    parser.feed(r.text)
+    text = re.sub(r"\n{3,}", "\n\n", "".join(parser.parts))
+    text = re.sub(r"[ \t]{2,}", " ", text).strip()
+    return text[:max_chars]
+
+
+# --------------------------------------------------------------------------- #
+# GitHub
+# --------------------------------------------------------------------------- #
+def _gh_headers():
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "FlippsV0.1"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def github_search(query, max_results=5):
+    """Search GitHub repositories. Public API, no key required."""
+    url = "https://api.github.com/search/repositories"
+    params = {"q": query, "per_page": max_results}
+    data = requests.get(url, params=params, headers=_gh_headers(), timeout=15).json()
+    return [
+        {"name": item.get("full_name", ""), "url": item.get("html_url", ""),
+         "description": (item.get("description") or "")[:200],
+         "stars": item.get("stargazers_count", 0), "language": item.get("language", "")}
+        for item in data.get("items", [])
+    ]
+
+
+def github_repo(repo):
+    """Get details about one repository, e.g. 'FlameClient-Mc/Flipps5-AI'."""
+    url = f"https://api.github.com/repos/{repo}"
+    data = requests.get(url, headers=_gh_headers(), timeout=15).json()
+    if "full_name" not in data:
+        return f"GitHub repo not found: {repo}"
+    return (
+        f"{data['full_name']} — {data.get('description') or 'no description'}\n"
+        f"Language: {data.get('language')} | Stars: {data.get('stargazers_count')} | "
+        f"Forks: {data.get('forks_count')} | URL: {data['html_url']}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# YouTube
+# --------------------------------------------------------------------------- #
+def youtube_search(query, max_results=3):
+    """Search YouTube. Uses the Data API if YOUTUBE_API_KEY is set, otherwise
+    a web search scoped to youtube.com."""
+    api_key = os.environ.get("YOUTUBE_API_KEY")
+    if api_key:
+        url = "https://www.googleapis.com/youtube/v3/search"
+        params = {"part": "snippet", "q": query, "type": "video",
+                  "maxResults": max_results, "key": api_key}
+        data = requests.get(url, params=params, timeout=15).json()
+        return [
+            {"title": i["snippet"]["title"],
+             "url": f"https://www.youtube.com/watch?v={i['id']['videoId']}",
+             "channel": i["snippet"]["channelTitle"]}
+            for i in data.get("items", [])
+        ]
+    results = web_search(f"youtube {query}", max_results * 2)
+    vids = [r for r in results if "youtube.com" in r["url"]][:max_results]
+    return vids or results[:max_results]
+
+
+# --------------------------------------------------------------------------- #
+# Telegram
+# --------------------------------------------------------------------------- #
+def telegram_send(chat_id, text):
+    """Send a Telegram message using TELEGRAM_BOT_TOKEN. Returns status text."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return "Telegram not configured — set TELEGRAM_BOT_TOKEN (get one from @BotFather)."
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    r = requests.post(url, json={"chat_id": chat_id, "text": text[:4000]}, timeout=15)
+    if r.status_code == 200:
+        return f"Sent to Telegram chat {chat_id}."
+    return f"Telegram error: {r.text[:200]}"
+
+
+# --------------------------------------------------------------------------- #
+# Twitter / Instagram
+# --------------------------------------------------------------------------- #
+def social_search(platform, query):
+    """Twitter/X and Instagram have no key-less public search APIs. If the
+    user adds API keys (X_API_BEARER / INSTAGRAM_TOKEN) this can light up;
+    for now, fall back to a scoped web search."""
+    if platform == "twitter" and os.environ.get("X_API_BEARER"):
+        url = "https://api.twitter.com/2/tweets/search/recent"
+        params = {"query": query, "max_results": 10}
+        headers = {"Authorization": f"Bearer {os.environ['X_API_BEARER']}"}
+        data = requests.get(url, params=params, headers=headers, timeout=15).json()
+        return [t.get("text", "") for t in data.get("data", [])][:5]
+    if platform == "instagram" and os.environ.get("INSTAGRAM_TOKEN"):
+        return ("Instagram Graph API is available, but needs a business account "
+                "token with the right permissions to search.")
+    return web_search(f"site:{'twitter.com' if platform == 'twitter' else 'instagram.com'} {query}", 4)
+
+
+# --------------------------------------------------------------------------- #
+# Research: search + read the best pages
+# --------------------------------------------------------------------------- #
+def research(query, max_results=3):
+    """Combine web search with reading top pages, for real research answers."""
+    results = web_search(query, max_results)
+    if not results:
+        return "No search results found."
+    chunks = [f"Search results for: {query}"]
+    for i, r in enumerate(results, 1):
+        chunks.append(f"{i}. {r['title']}\n   {r['url']}\n   {r.get('snippet', '')}")
+    chunks.append("\n--- Page contents ---")
+    for r in results:
+        url = r["url"]
+        try:
+            text = read_url(url, max_chars=2500)
+            chunks.append(f"### {r['title']} ({url})\n{text[:2500]}")
+        except Exception:
+            chunks.append(f"### {r['title']} ({url})\n[could not read page]")
+    return "\n\n".join(chunks)
+
+
+TOOL_HELP = """Flipps V0.1 tools — type any of these:
+  search: <query>      web search (Google if keys set, else DuckDuckGo)
+  research: <query>    search + read the top pages and synthesize
+  youtube: <query>     find YouTube videos
+  github: <query>      search GitHub repos
+  repo: <owner/name>   details on one GitHub repo
+  fetch: <url>         read the text of a web page
+  telegram: <chat_id> <text>   send a Telegram message (needs bot token)
+  twitter: <query> / instagram: <query>   scoped web search
+"""
